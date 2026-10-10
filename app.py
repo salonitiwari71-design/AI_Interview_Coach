@@ -11,13 +11,12 @@ import json
 
 load_dotenv()
 
-try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-except:
-    api_key = os.getenv("GEMINI_API_KEY")
+api_key =
+os.getenv("GEMINI_API_KEY")
 
-if not api_key:
-    st.error("Gemini API key not found.")
+if not api_key :
+    st.error("GEMINI API Key not found. "
+             "please check your .env file.")
     st.stop()
 
 
