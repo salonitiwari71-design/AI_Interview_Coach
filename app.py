@@ -1,536 +1,260 @@
+
+import os
 import streamlit as st
 from google import genai
-from dotenv import load_dotenv
-import os
-import json
 
-
-# ==========================================
-# LOAD GEMINI API KEY
-# ==========================================
-
-load_dotenv()
-
-api_key =
-os.getenv("GEMINI_API_KEY")
-
-if not api_key :
-    st.error("GEMINI API Key not found. "
-             "please check your .env file.")
-    st.stop()
-
-
-# ==========================================
-# GEMINI CLIENT
-# ==========================================
-
-client = genai.Client(api_key=api_key)
-
-
-# ==========================================
-# PAGE CONFIG
-# ==========================================
+# -------------------------------
+# AI INTERVIEW COACH
+# -------------------------------
 
 st.set_page_config(
     page_title="AI Interview Coach",
     page_icon="🎯",
-    layout="centered"
+    layout="wide"
 )
 
+# Read Gemini API key securely
+try:
+    API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+except Exception:
+    API_KEY = ""
 
-# ==========================================
-# CUSTOM CSS
-# ==========================================
+API_KEY = API_KEY or os.getenv("GEMINI_API_KEY", "")
 
-st.markdown(
-    """
-    <style>
+# Page design
+st.title("🎯 AI Interview Coach")
+st.subheader("Practice interviews with your personal AI coach")
 
-    .title {
-        text-align: center;
-        font-size: 42px;
-        font-weight: bold;
-    }
-
-    .subtitle {
-        text-align: center;
-        font-size: 18px;
-        color: gray;
-        margin-bottom: 30px;
-    }
-
-    .question-box {
-        padding: 20px;
-        border-radius: 15px;
-        background-color: #f1f5f9;
-        margin-top: 20px;
-        margin-bottom: 20px;
-    }
-
-    .score {
-        font-size: 35px;
-        font-weight: bold;
-        text-align: center;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
+st.write(
+    "Prepare for job interviews, practise your answers, "
+    "and get AI-powered feedback to improve your performance."
 )
 
+st.divider()
 
-# ==========================================
-# SESSION STATE
-# ==========================================
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ Interview Settings")
 
-if "started" not in st.session_state:
-    st.session_state.started = False
+    role = st.text_input(
+        "Job Role",
+        placeholder="e.g. Python Developer"
+    )
 
-if "question" not in st.session_state:
-    st.session_state.question = ""
+    level = st.selectbox(
+        "Experience Level",
+        ["Fresher", "Beginner", "Intermediate", "Experienced"]
+    )
+
+    interview_type = st.selectbox(
+        "Interview Type",
+        ["Technical", "HR", "General"]
+    )
+
+    language = st.selectbox(
+        "Feedback Language",
+        ["English", "Simple Hinglish"]
+    )
+
+# Check API key and create client
+client = None
+
+if API_KEY:
+    try:
+        client = genai.Client(api_key=API_KEY)
+    except Exception:
+        st.error("Unable to initialize Gemini. Check your API setup.")
+
+# Session state
+if "questions" not in st.session_state:
+    st.session_state.questions = []
 
 if "feedback" not in st.session_state:
-    st.session_state.feedback = None
+    st.session_state.feedback = {}
 
-if "question_number" not in st.session_state:
-    st.session_state.question_number = 1
-
-if "scores" not in st.session_state:
-    st.session_state.scores = []
-
-if "interview_finished" not in st.session_state:
-    st.session_state.interview_finished = False
-
-
-# ==========================================
-# GEMINI AI FUNCTION
-# ==========================================
-
+# Helper function
 def ask_gemini(prompt):
-
+    """Send a prompt to Gemini and return its response."""
     response = client.models.generate_content(
-        model="gemini-3.8-flash",
+        model="gemini-2.5-flash",
         contents=prompt
     )
+    return response.text or "No response received. Please try again."
 
-    return response.text
-
-
-# ==========================================
-# GENERATE INTERVIEW QUESTION
-# ==========================================
-
-def generate_question(role, difficulty, question_number):
-
-    prompt = f"""
-You are a professional AI interview coach.
-
-Candidate job role:
-{role}
-
-Interview difficulty:
-{difficulty}
-
-Question number:
-{question_number}
-
-Generate ONE realistic interview question.
-
-Rules:
-- Ask only one question.
-- Do not provide the answer.
-- Make it suitable for the selected job role.
-- Keep it clear and professional.
-- Avoid unnecessary repetition.
-
-Return only the interview question.
-"""
-
-    return ask_gemini(prompt)
-
-
-# ==========================================
-# EVALUATE ANSWER
-# ==========================================
-
-def evaluate_answer(role, question, answer):
-
-    prompt = f"""
-You are an expert interview evaluator.
-
-Candidate job role:
-{role}
-
-Interview question:
-{question}
-
-Candidate answer:
-{answer}
-
-Evaluate the candidate's answer.
-
-Return ONLY valid JSON.
-
-Use exactly this structure:
-
-{{
-    "score": 0,
-    "strengths": [
-        "strength 1",
-        "strength 2"
-    ],
-    "weaknesses": [
-        "weakness 1",
-        "weakness 2"
-    ],
-    "tips": [
-        "tip 1",
-        "tip 2"
-    ],
-    "better_answer": "A short improved example answer"
-}}
-
-Important:
-- Score must be between 0 and 10.
-- Be fair.
-- Be constructive.
-- Do not add markdown.
-- Do not add ```json.
-"""
-
-    result = ask_gemini(prompt)
-
-    # Remove markdown if Gemini accidentally adds it
-    result = result.replace("```json", "")
-    result = result.replace("```", "")
-    result = result.strip()
-
-    try:
-
-        return json.loads(result)
-
-    except:
-
-        return {
-            "score": 0,
-            "strengths": [
-                "The answer was received."
-            ],
-            "weaknesses": [
-                "The AI could not properly process the response."
-            ],
-            "tips": [
-                "Try giving a clear and structured answer."
-            ],
-            "better_answer": (
-                "Try answering the question again "
-                "with a clear explanation and example."
-            )
-        }
-
-
-# ==========================================
-# HEADER
-# ==========================================
-
-st.markdown(
-    '<div class="title">🎯 AI Interview Coach</div>',
-    unsafe_allow_html=True
+# Main sections
+tab1, tab2, tab3 = st.tabs(
+    ["📝 Generate Questions", "💬 Practise Answers", "📊 My Results"]
 )
 
-st.markdown(
-    '<div class="subtitle">'
-    'Practice interviews with your personal AI coach'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-
-# ==========================================
-# START SCREEN
-# ==========================================
-
-if not st.session_state.started:
-
-    st.header("🚀 Start Your Mock Interview")
-
-    name = st.text_input(
-        "👤 Your Name",
-        placeholder="Enter your name"
-    )
-
-    role = st.selectbox(
-        "💼 Select Job Role",
-        [
-            "Python Developer",
-            "Web Developer",
-            "Data Analyst",
-            "Software Developer",
-            "AI / ML Intern",
-            "Frontend Developer",
-            "Backend Developer"
-        ]
-    )
-
-    difficulty = st.selectbox(
-        "🎯 Interview Difficulty",
-        [
-            "Easy",
-            "Medium",
-            "Hard"
-        ]
-    )
-
-    total_questions = st.slider(
-        "📝 Number of Questions",
-        3,
-        10,
-        5
-    )
-
-    if st.button(
-        "🚀 Start Interview",
-        use_container_width=True
-    ):
-
-        if not name.strip():
-
-            st.warning("Please enter your name.")
-
-        else:
-
-            st.session_state.name = name
-            st.session_state.role = role
-            st.session_state.difficulty = difficulty
-            st.session_state.total_questions = total_questions
-
-            st.session_state.question_number = 1
-            st.session_state.scores = []
-            st.session_state.feedback = None
-            st.session_state.interview_finished = False
-
-            with st.spinner(
-                "🤖 Gemini is preparing your first question..."
-            ):
-
-                st.session_state.question = generate_question(
-                    role,
-                    difficulty,
-                    1
-                )
-
-            st.session_state.started = True
-
-            st.rerun()
-
-
-# ==========================================
-# INTERVIEW SCREEN
-# ==========================================
-
-else:
-
-    st.success(
-        f"Welcome {st.session_state.name}! "
-        f"Role: {st.session_state.role}"
-    )
-
-    progress = (
-        st.session_state.question_number /
-        st.session_state.total_questions
-    )
-
-    st.progress(progress)
+# -------------------------------
+# TAB 1: GENERATE QUESTIONS
+# -------------------------------
+with tab1:
+    st.header("Generate Interview Questions")
 
     st.write(
-        f"### Question "
-        f"{st.session_state.question_number} "
-        f"of {st.session_state.total_questions}"
+        "Choose your job role in the sidebar, "
+        "then generate questions for your practice."
     )
 
-    st.markdown(
-        f"""
-        <div class="question-box">
-        <h3>🤖 Gemini Interviewer</h3>
-        <p>{st.session_state.question}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    answer = st.text_area(
-        "✍️ Your Answer",
-        height=180,
-        placeholder="Type your interview answer here..."
-    )
-
-    if st.button(
-        "🧠 Evaluate My Answer",
-        use_container_width=True
-    ):
-
-        if not answer.strip():
-
-            st.warning(
-                "Please write your answer first."
+    if st.button("✨ Generate 5 Questions", type="primary"):
+        if not role.strip():
+            st.warning("Please enter a job role in the sidebar.")
+        elif not client:
+            st.error(
+                "Gemini API key is missing. Add GEMINI_API_KEY "
+                "in Streamlit Secrets and restart the app."
             )
-
         else:
+            prompt = f"""
+            Act as a professional interview coach.
 
-            with st.spinner(
-                "🤖 Gemini is evaluating your answer..."
-            ):
+            Job role: {role}
+            Experience level: {level}
+            Interview type: {interview_type}
 
-                feedback = evaluate_answer(
-                    st.session_state.role,
-                    st.session_state.question,
-                    answer
-                )
+            Generate exactly 5 useful interview questions.
+            Number them from 1 to 5.
+            Keep the questions appropriate for the experience level.
+            Use clear language.
+            Do not provide answers.
+            """
 
-            st.session_state.feedback = feedback
-
-            st.session_state.scores.append(
-                feedback["score"]
-            )
-
-            st.rerun()
-
-
-# ==========================================
-# FEEDBACK
-# ==========================================
-
-if st.session_state.feedback:
-
-    feedback = st.session_state.feedback
-
-    st.divider()
-
-    st.header("📊 AI Feedback")
-
-    st.markdown(
-        f"""
-        <div class="score">
-        ⭐ {feedback["score"]}/10
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.subheader("✅ What You Did Well")
-
-    for item in feedback["strengths"]:
-        st.write("• " + item)
-
-    st.subheader("❌ What You Can Improve")
-
-    for item in feedback["weaknesses"]:
-        st.write("• " + item)
-
-    st.subheader("💡 Improvement Tips")
-
-    for item in feedback["tips"]:
-        st.write("• " + item)
-
-    st.subheader("🌟 Example of a Better Answer")
-
-    st.info(feedback["better_answer"])
-
-    st.divider()
-
-    # ======================================
-    # NEXT QUESTION
-    # ======================================
-
-    if (
-        st.session_state.question_number
-        < st.session_state.total_questions
-    ):
-
-        if st.button(
-            "➡️ Next Question",
-            use_container_width=True
-        ):
-
-            st.session_state.question_number += 1
-
-            with st.spinner(
-                "🤖 Gemini is preparing the next question..."
-            ):
-
-                st.session_state.question = (
-                    generate_question(
-                        st.session_state.role,
-                        st.session_state.difficulty,
-                        st.session_state.question_number
+            with st.spinner("Preparing your interview questions..."):
+                try:
+                    result = ask_gemini(prompt)
+                    st.session_state.questions = [
+                        line.strip()
+                        for line in result.splitlines()
+                        if line.strip()
+                    ]
+                    st.session_state.feedback = {}
+                    st.success("Questions generated!")
+                except Exception as e:
+                    st.error(
+                        "Could not generate questions. "
+                        "Check your API key, model access, and quota."
                     )
-                )
+                    st.caption(f"Technical details: {e}")
 
-            st.session_state.feedback = None
+    if st.session_state.questions:
+        st.subheader("Your Interview Questions")
+        for question in st.session_state.questions:
+            st.write(question)
 
-            st.rerun()
+# -------------------------------
+# TAB 2: PRACTISE ANSWERS
+# -------------------------------
+with tab2:
+    st.header("Practise Your Answers")
+
+    if not role.strip():
+        st.info("Enter your job role in the sidebar first.")
+
+    elif not st.session_state.questions:
+        st.info("First generate questions in the Generate Questions tab.")
 
     else:
+        question_options = st.session_state.questions
 
-        st.session_state.interview_finished = True
-
-
-# ==========================================
-# FINAL REPORT
-# ==========================================
-
-if st.session_state.interview_finished:
-
-    st.divider()
-
-    st.header("🏆 Interview Completed!")
-
-    scores = st.session_state.scores
-
-    if scores:
-
-        average_score = sum(scores) / len(scores)
-
-        st.metric(
-            "Overall Score",
-            f"{average_score:.1f}/10"
+        selected_question = st.selectbox(
+            "Choose a question",
+            question_options
         )
 
-        st.subheader("📈 Question-wise Scores")
+        answer = st.text_area(
+            "Write your answer here",
+            height=180,
+            placeholder="Type your interview answer..."
+        )
 
-        for i, score in enumerate(scores):
+        if st.button("🤖 Evaluate My Answer", type="primary"):
+            if not answer.strip():
+                st.warning("Please write your answer first.")
+            elif not client:
+                st.error("Please configure your Gemini API key first.")
+            else:
+                prompt = f"""
+                You are a helpful professional interview coach.
 
-            st.write(
-                f"Question {i + 1}: ⭐ {score}/10"
+                Job role: {role}
+                Experience level: {level}
+                Interview type: {interview_type}
+                Candidate's preferred feedback language: {language}
+
+                Interview question:
+                {selected_question}
+
+                Candidate's answer:
+                {answer}
+
+                Evaluate the answer fairly and constructively.
+
+                Return these sections:
+                1. Score out of 10
+                2. What was good
+                3. What needs improvement
+                4. A sample improved answer
+                5. One practical tip for the next interview
+
+                Be encouraging. Do not invent qualifications or
+                experience for the candidate.
+                """
+
+                with st.spinner("Evaluating your answer..."):
+                    try:
+                        feedback = ask_gemini(prompt)
+                        st.session_state.feedback[selected_question] = feedback
+                        st.success("Your feedback is ready!")
+                    except Exception as e:
+                        st.error(
+                            "Evaluation failed. Check your API key, "
+                            "model access, and quota."
+                        )
+                        st.caption(f"Technical details: {e}")
+
+        if selected_question in st.session_state.feedback:
+            st.markdown("### 🧠 AI Feedback")
+            st.markdown(
+                st.session_state.feedback[selected_question]
             )
 
-        st.subheader("🎯 Final Advice")
+# -------------------------------
+# TAB 3: RESULTS
+# -------------------------------
+with tab3:
+    st.header("📊 Your Practice Results")
 
-        if average_score >= 8:
+    total_questions = len(st.session_state.questions)
+    completed_answers = len(st.session_state.feedback)
 
-            st.success(
-                "Excellent performance! "
-                "Keep practicing to maintain consistency."
-            )
+    col1, col2 = st.columns(2)
 
-        elif average_score >= 6:
+    col1.metric("Questions Generated", total_questions)
+    col2.metric("Answers Evaluated", completed_answers)
 
-            st.info(
-                "Good performance. "
-                "Focus on improving clarity and confidence."
-            )
+    if st.session_state.feedback:
+        st.subheader("Feedback History")
 
-        else:
+        for question, feedback in st.session_state.feedback.items():
+            with st.expander(question):
+                st.markdown(feedback)
 
-            st.warning(
-                "Keep practicing. "
-                "Focus on giving structured and detailed answers."
-            )
+        report = "\n\n".join(
+            f"QUESTION: {question}\n\nFEEDBACK:\n{feedback}"
+            for question, feedback in st.session_state.feedback.items()
+        )
 
-    if st.button("🔄 Start New Interview"):
+        st.download_button(
+            label="📥 Download Practice Report",
+            data=report,
+            file_name="interview_practice_report.txt",
+            mime="text/plain"
+        )
+    else:
+        st.info(
+            "Your results will appear here after you evaluate an answer."
+        )
 
-        for key in list(st.session_state.keys()):
-
-            del st.session_state[key]
-
-        st.rerun()
+st.divider()
+st.caption("AI Interview Coach | BCA Project | Powered by Google Gemini")
